@@ -28,12 +28,12 @@ import (
 )
 
 type statsdStatter struct {
-	conn     *net.UDPConn
-	addr     *net.UDPAddr
-	Name     string
-	Logger   *Logger
-	Enabled  bool
-  prefix   string
+	conn    *net.UDPConn
+	addr    *net.UDPAddr
+	Name    string
+	Logger  *Logger
+	Enabled bool
+	prefix  string
 }
 
 func newStatsdStatterWithConfig(routeConfig *RouteConfig, statterConfig *StatterConfig) Statter {
@@ -53,12 +53,12 @@ func newStatsdStatterWithConfig(routeConfig *RouteConfig, statterConfig *Statter
 	}
 
 	return &statsdStatter{
-		conn:     conn,
-		addr:     addr,
-		Name:     routeConfig.Name,
-		Logger:   logger,
-		Enabled:  statterConfig.Enabled,
-    prefix: statterConfig.Prefix,
+		conn:    conn,
+		addr:    addr,
+		Name:    routeConfig.Name,
+		Logger:  logger,
+		Enabled: statterConfig.Enabled,
+		prefix:  statterConfig.Prefix,
 	}
 }
 
@@ -106,4 +106,3 @@ func (s *statsdStatter) send(stat string, value string) {
 		s.Logger.Errorf("No bytes were written")
 	}
 }
-

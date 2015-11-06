@@ -25,9 +25,8 @@ type Statter interface {
 }
 
 func NewStatterWithConfig(routeConfig *RouteConfig, statterConfig *StatterConfig) Statter {
-  if statterConfig.Type == "influxdb" {
-    return newInfluxStatterWithConfig(routeConfig, statterConfig)
-  }
-  return newStatsdStatterWithConfig(routeConfig, statterConfig)
+	if statterConfig.Type == "influxdb" {
+		return newInfluxStatterWithConfig(routeConfig, statterConfig)
+	}
+	return newStatsdStatterWithConfig(routeConfig, statterConfig)
 }
-

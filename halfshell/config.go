@@ -22,9 +22,9 @@ package halfshell
 
 import (
 	"encoding/json"
-  "reflect"
 	"fmt"
 	"os"
+	"reflect"
 	"regexp"
 	"strings"
 )
@@ -90,16 +90,16 @@ type FormatConfig struct {
 
 // StatterConfig holds configuration data for StatsD or InfluxDB
 type StatterConfig struct {
-	Enabled   bool
-	Host      string
-	Port      uint64
-  Username  string
-  Password  string
-  Database  string
-  Type      string // "statsd" or "influxdb"
-  Prefix    string // string to be prepended to each metric title
-  Tags      map[string]string // for influx only
-  Interval  uint // batch send interval in seconds, for influx only
+	Enabled  bool
+	Host     string
+	Port     uint64
+	Username string
+	Password string
+	Database string
+	Type     string            // "statsd" or "influxdb"
+	Prefix   string            // string to be prepended to each metric title
+	Tags     map[string]string // for influx only
+	Interval uint              // batch send interval in seconds, for influx only
 }
 
 // NewConfigFromFile parses a JSON configuration file and returns a pointer to
@@ -192,35 +192,35 @@ func (c *configParser) parseServerConfig() *ServerConfig {
 
 func (c *configParser) parseStatterConfig() *StatterConfig {
 	statsd, statsdExists := c.data["statsd"].(map[string]interface{})
-  influxdb, influxdbExists := c.data["influxdb"].(map[string]interface{})
+	influxdb, influxdbExists := c.data["influxdb"].(map[string]interface{})
 
-  if statsdExists && influxdbExists {
-    panic("Cannot enable both statsd and influxDB.")
-  }
+	if statsdExists && influxdbExists {
+		panic("Cannot enable both statsd and influxDB.")
+	}
 
-  var metricsType string
-  var metrics map[string]interface{}
-  var enabled interface{}
-  var ok bool
-  if influxdbExists {
-    metrics = influxdb
-    metricsType = "influxdb"
-    enabled, ok = influxdb["enabled"]
-    if !ok {
-      enabled = true
-    }
-  } else if statsdExists {
-    metrics = statsd
-    metricsType = "statsd"
-    enabled, ok = statsd["enabled"]
-    if !ok {
-      enabled = true
-    }
-  } else {
-    metrics = statsd
-    enabled = true
-    metricsType = "statsd"
-  }
+	var metricsType string
+	var metrics map[string]interface{}
+	var enabled interface{}
+	var ok bool
+	if influxdbExists {
+		metrics = influxdb
+		metricsType = "influxdb"
+		enabled, ok = influxdb["enabled"]
+		if !ok {
+			enabled = true
+		}
+	} else if statsdExists {
+		metrics = statsd
+		metricsType = "statsd"
+		enabled, ok = statsd["enabled"]
+		if !ok {
+			enabled = true
+		}
+	} else {
+		metrics = statsd
+		enabled = true
+		metricsType = "statsd"
+	}
 
 	host, _ := metrics["host"].(string)
 	if host == "" {
@@ -232,38 +232,38 @@ func (c *configParser) parseStatterConfig() *StatterConfig {
 		port = 8125
 	}
 
-  username, _ := metrics["username"].(string)
-  password, _ := metrics["password"].(string)
-  database, _ := metrics["database"].(string)
+	username, _ := metrics["username"].(string)
+	password, _ := metrics["password"].(string)
+	database, _ := metrics["database"].(string)
 
 	prefix, _ := metrics["prefix"].(string)
 	if prefix == "" {
-    hostname, _ := os.Hostname()
-    prefix = fmt.Sprintf("%s.halfshell", hostname)
+		hostname, _ := os.Hostname()
+		prefix = fmt.Sprintf("%s.halfshell", hostname)
 	}
 
-  rawTags := metrics["tags"].(map[string]interface{})
-  tags := make(map[string]string)
-  for k, v := range rawTags {
-    tags[k] = v.(string)
-  }
+	rawTags := metrics["tags"].(map[string]interface{})
+	tags := make(map[string]string)
+	for k, v := range rawTags {
+		tags[k] = v.(string)
+	}
 
-  interval, _ := metrics["interval"].(uint)
-  if interval == 0 {
-    interval = 10
-  }
+	interval, _ := metrics["interval"].(uint)
+	if interval == 0 {
+		interval = 10
+	}
 
 	return &StatterConfig{
-		Host:    host,
-		Port:    uint64(port),
-		Enabled: enabled.(bool),
-    Username: username,
-    Password: password,
-    Database: database,
-    Type: metricsType,
-    Prefix: prefix,
-    Tags: tags,
-    Interval: interval,
+		Host:     host,
+		Port:     uint64(port),
+		Enabled:  enabled.(bool),
+		Username: username,
+		Password: password,
+		Database: database,
+		Type:     metricsType,
+		Prefix:   prefix,
+		Tags:     tags,
+		Interval: interval,
 	}
 }
 
