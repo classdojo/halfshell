@@ -22,9 +22,9 @@ package halfshell
 
 import (
 	"encoding/json"
+  "reflect"
 	"fmt"
 	"os"
-	"reflect"
 	"regexp"
 	"strings"
 )
@@ -88,7 +88,7 @@ type FormatConfig struct {
 	Blur   float64
 }
 
-// StatterConfig holds configuration data for StatsD
+// StatterConfig holds configuration data for StatsD or InfluxDB
 type StatterConfig struct {
 	Enabled   bool
 	Host      string
@@ -96,9 +96,10 @@ type StatterConfig struct {
   Username  string
   Password  string
   Database  string
-  Type      string
-  Prefix    string
-  Tags      map[string]string
+  Type      string // "statsd" or "influxdb"
+  Prefix    string // string to be prepended to each metric title
+  Tags      map[string]string // for influx only
+  Interval  uint // batch send interval in seconds, for influx only
 }
 
 // NewConfigFromFile parses a JSON configuration file and returns a pointer to
@@ -241,7 +242,16 @@ func (c *configParser) parseStatterConfig() *StatterConfig {
     prefix = fmt.Sprintf("%s.halfshell", hostname)
 	}
 
-  tags, _ := metrics["tags"].(map[string]string)
+  rawTags := metrics["tags"].(map[string]interface{})
+  tags := make(map[string]string)
+  for k, v := range rawTags {
+    tags[k] = v.(string)
+  }
+
+  interval, _ := metrics["interval"].(uint)
+  if interval == 0 {
+    interval = 10
+  }
 
 	return &StatterConfig{
 		Host:    host,
@@ -253,6 +263,7 @@ func (c *configParser) parseStatterConfig() *StatterConfig {
     Type: metricsType,
     Prefix: prefix,
     Tags: tags,
+    Interval: interval,
 	}
 }
 
