@@ -90,9 +90,15 @@ type FormatConfig struct {
 
 // StatterConfig holds configuration data for StatsD
 type StatterConfig struct {
-	Host    string
-	Port    uint64
-	Enabled bool
+	Enabled   bool
+	Host      string
+	Port      uint64
+  Username  string
+  Password  string
+  Database  string
+  Type      string
+  Prefix    string
+  Tags      map[string]string
 }
 
 // NewConfigFromFile parses a JSON configuration file and returns a pointer to
@@ -184,29 +190,69 @@ func (c *configParser) parseServerConfig() *ServerConfig {
 }
 
 func (c *configParser) parseStatterConfig() *StatterConfig {
-	statsd, _ := c.data["statsd"].(map[string]interface{})
+	statsd, statsdExists := c.data["statsd"].(map[string]interface{})
+  influxdb, influxdbExists := c.data["influxdb"].(map[string]interface{})
 
-	host, _ := statsd["host"].(string)
+  if statsdExists && influxdbExists {
+    panic("Cannot enable both statsd and influxDB.")
+  }
+
+  var metricsType string
+  var metrics map[string]interface{}
+  var enabled interface{}
+  var ok bool
+  if influxdbExists {
+    metrics = influxdb
+    metricsType = "influxdb"
+    enabled, ok = influxdb["enabled"]
+    if !ok {
+      enabled = true
+    }
+  } else if statsdExists {
+    metrics = statsd
+    metricsType = "statsd"
+    enabled, ok = statsd["enabled"]
+    if !ok {
+      enabled = true
+    }
+  } else {
+    metrics = statsd
+    enabled = true
+    metricsType = "statsd"
+  }
+
+	host, _ := metrics["host"].(string)
 	if host == "" {
 		host = "0"
 	}
 
-	port, _ := statsd["port"].(float64)
+	port, _ := metrics["port"].(float64)
 	if port == 0 {
 		port = 8125
 	}
 
-	enabled, ok := statsd["enabled"]
-	if ok {
-		enabled, _ = enabled.(bool)
-	} else {
-		enabled = true
+  username, _ := metrics["username"].(string)
+  password, _ := metrics["password"].(string)
+  database, _ := metrics["database"].(string)
+
+	prefix, _ := metrics["prefix"].(string)
+	if prefix == "" {
+    hostname, _ := os.Hostname()
+    prefix = fmt.Sprintf("%s.halfshell", hostname)
 	}
+
+  tags, _ := metrics["tags"].(map[string]string)
 
 	return &StatterConfig{
 		Host:    host,
 		Port:    uint64(port),
 		Enabled: enabled.(bool),
+    Username: username,
+    Password: password,
+    Database: database,
+    Type: metricsType,
+    Prefix: prefix,
+    Tags: tags,
 	}
 }
 

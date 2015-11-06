@@ -32,10 +32,13 @@ Server settings:
   Read Timeout: {{.Config.ServerConfig.ReadTimeout}}
   Write Timeout: {{.Config.ServerConfig.WriteTimeout}}
 
-StatsD settings:
+Metrics settings:
+  Type: {{.Config.StatterConfig.Type}}
+  Enabled: {{.Config.StatterConfig.Enabled}}
+  Prefix: {{.Config.StatterConfig.Prefix}}
   Host: {{.Config.StatterConfig.Host}}
   Port: {{.Config.StatterConfig.Port}}
-  Enabled: {{.Config.StatterConfig.Enabled}}
+  Database: {{.Config.StatterConfig.Database}}
 
 Routes:
 {{ range $index, $route := .Routes }}  {{ $route.Name }}:

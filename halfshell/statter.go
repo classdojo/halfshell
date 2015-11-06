@@ -24,8 +24,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+  "net/url"
 	"os"
 	"time"
+  influx "github.com/influxdb/influxdb/client/v2"
 )
 
 type Statter interface {
@@ -36,14 +38,92 @@ type statsdStatter struct {
 	conn     *net.UDPConn
 	addr     *net.UDPAddr
 	Name     string
-	Hostname string
 	Logger   *Logger
 	Enabled  bool
+  prefix  string
+}
+
+type influxStatter struct {
+  metricsChannel chan influx.Point
+  client   influx.Client
+	Name     string
+	Logger   *Logger
+	Enabled  bool
+  hostname string
+  prefix  string
+  tags map[string]string
+}
+
+func newBatchPointsForDB(database string, logger *Logger) influx.BatchPoints {
+  batch, err := influx.NewBatchPoints(influx.BatchPointsConfig{
+    Database: database,
+  })
+  if err != nil {
+    logger.Errorf("Unable to create points batch: %v", err)
+    return nil
+  }
+  return batch
 }
 
 func NewStatterWithConfig(routeConfig *RouteConfig, statterConfig *StatterConfig) Statter {
+  if statterConfig.Type == "influxdb" {
+    return newInfluxStatterWithConfig(routeConfig, statterConfig)
+  }
+  return newStatsdStatterWithConfig(routeConfig, statterConfig)
+}
+
+func newInfluxStatterWithConfig(routeConfig *RouteConfig, statterConfig *StatterConfig) Statter {
 	logger := NewLogger("stats.%s", routeConfig.Name)
 	hostname, _ := os.Hostname()
+
+  url, err := url.Parse(fmt.Sprintf("%s:%d", statterConfig.Host, statterConfig.Port))
+  if err != nil {
+    logger.Errorf("Unable to parse influxDB url: %v", err)
+    return nil
+  }
+
+  influxConfig := influx.Config{
+    URL: url,
+    Username: statterConfig.Username,
+    Password: statterConfig.Password,
+  }
+
+  client := influx.NewClient(influxConfig)
+
+  metricsChannel := make(chan influx.Point)
+  batch := newBatchPointsForDB(statterConfig.Database, logger)
+  ticker := time.NewTicker(time.Duration(10)*time.Second)
+
+  go func() {
+    for {
+      select {
+      case point := <-metricsChannel:
+        batch.AddPoint(&point)
+      case <-ticker.C:
+        //  send current batch to influx
+        err := client.Write(batch)
+        if err != nil {
+          logger.Errorf("Unable to write batch to influx db: %v", err)
+        }
+        batch = newBatchPointsForDB(statterConfig.Database, logger)
+      }
+    }
+  }()
+
+  return &influxStatter{
+    metricsChannel: metricsChannel,
+    client: client,
+    Name: routeConfig.Name,
+    Logger: logger,
+    Enabled: statterConfig.Enabled,
+    hostname: hostname,
+    prefix: statterConfig.Prefix,
+    tags: statterConfig.Tags,
+  }
+}
+
+func newStatsdStatterWithConfig(routeConfig *RouteConfig, statterConfig *StatterConfig) Statter {
+	logger := NewLogger("stats.%s", routeConfig.Name)
 
 	addr, err := net.ResolveUDPAddr(
 		"udp", fmt.Sprintf("%s:%d", statterConfig.Host, statterConfig.Port))
@@ -62,9 +142,9 @@ func NewStatterWithConfig(routeConfig *RouteConfig, statterConfig *StatterConfig
 		conn:     conn,
 		addr:     addr,
 		Name:     routeConfig.Name,
-		Hostname: hostname,
 		Logger:   logger,
 		Enabled:  statterConfig.Enabled,
+    prefix: statterConfig.Prefix,
 	}
 }
 
@@ -92,13 +172,13 @@ func (s *statsdStatter) RegisterRequest(w *ResponseWriter, r *Request) {
 }
 
 func (s *statsdStatter) count(stat string) {
-	stat = fmt.Sprintf("%s.halfshell.%s.%s", s.Hostname, s.Name, stat)
+	stat = fmt.Sprintf("%s.%s.%s", s.prefix, s.Name, stat)
 	s.Logger.Infof("Incrementing counter: %s", stat)
 	s.send(stat, "1|c")
 }
 
 func (s *statsdStatter) time(stat string, time int64) {
-	stat = fmt.Sprintf("%s.halfshell.%s.%s", s.Hostname, s.Name, stat)
+	stat = fmt.Sprintf("%s.%s.%s", s.prefix, s.Name, stat)
 	s.Logger.Infof("Registering time: %s (%d)", stat, time)
 	s.send(stat, fmt.Sprintf("%d|ms", time))
 }
@@ -111,4 +191,58 @@ func (s *statsdStatter) send(stat string, value string) {
 	} else if n == 0 {
 		s.Logger.Errorf("No bytes were written")
 	}
+}
+
+func (s *influxStatter) RegisterRequest(w *ResponseWriter, r *Request) {
+	if !s.Enabled {
+		return
+	}
+
+	now := time.Now()
+
+	status := "success"
+	if w.Status != http.StatusOK {
+		status = "failure"
+	}
+
+  dimensions := r.ProcessorOptions.Dimensions
+  tags := map[string]string{
+    "hostname": s.hostname,
+    "route": s.Name,
+    "width": fmt.Sprintf("%d", dimensions.Width),
+    "height": fmt.Sprintf("%d", dimensions.Height),
+  }
+  for k, v := range s.tags {
+    tags[k] = v
+  }
+
+	s.count(fmt.Sprintf("http.status.%d", w.Status), tags)
+	s.count(fmt.Sprintf("image_resized.%s", status), tags)
+
+	if status == "success" {
+		durationInMs := (now.UnixNano() - r.Timestamp.UnixNano()) / 1000000
+		s.time("image_resized", durationInMs, tags)
+	}
+}
+
+func (s *influxStatter) count(stat string, tags map[string]string) {
+	stat = fmt.Sprintf("%s.%s.%s", s.prefix, s.Name, stat)
+	s.Logger.Infof("Incrementing counter: %s", stat)
+  fields := map[string]interface{}{"count": 1}
+  s.enqueue(stat, tags, fields)
+}
+
+func (s *influxStatter) time(stat string, time int64, tags map[string]string) {
+	stat = fmt.Sprintf("%s.%s.%s", s.prefix, s.Name, stat)
+	s.Logger.Infof("Registering time: %s (%d)", stat, time)
+  fields := map[string]interface{}{"duration": time}
+  s.enqueue(stat, tags, fields)
+}
+
+func (s *influxStatter) enqueue(name string, tags map[string]string, fields map[string]interface{}) {
+  point, err := influx.NewPoint(name, tags, fields, time.Now())
+  if err != nil {
+    s.Logger.Errorf("Error creating new metrics point: %v", err)
+  }
+  s.metricsChannel <- *point
 }
