@@ -22,7 +22,7 @@ package halfshell
 
 import (
 	"fmt"
-	influx "github.com/influxdb/influxdb/client/v2"
+	influx "github.com/classdojo/influxdb/client/v2"
 	"net/http"
 	"net/url"
 	"os"
@@ -50,13 +50,13 @@ func newInfluxStatterWithConfig(routeConfig *RouteConfig, statterConfig *Statter
 		return nil
 	}
 
-	influxConfig := influx.Config{
+	influxConfig := influx.HTTPConfig{
 		URL:      url,
 		Username: statterConfig.Username,
 		Password: statterConfig.Password,
 	}
 
-	client := influx.NewClient(influxConfig)
+	client := influx.NewHTTPClient(influxConfig)
 
 	metricsChannel := make(chan influx.Point)
 	batch := newBatchPointsForDB(statterConfig.Database, logger)
