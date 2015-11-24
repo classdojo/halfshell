@@ -24,7 +24,6 @@ import (
 	"fmt"
 	influx "github.com/classdojo/influxdb/client/v2"
 	"net/http"
-	"net/url"
 	"os"
 	"time"
 )
@@ -44,19 +43,18 @@ func newInfluxStatterWithConfig(routeConfig *RouteConfig, statterConfig *Statter
 	logger := NewLogger("stats.%s", routeConfig.Name)
 	hostname, _ := os.Hostname()
 
-	url, err := url.Parse(fmt.Sprintf("%s:%d", statterConfig.Host, statterConfig.Port))
-	if err != nil {
-		logger.Errorf("Unable to parse influxDB url: %v", err)
-		return nil
-	}
+	addr := fmt.Sprintf("%s:%d", statterConfig.Host, statterConfig.Port)
 
 	influxConfig := influx.HTTPConfig{
-		URL:      url,
+		Addr:     addr,
 		Username: statterConfig.Username,
 		Password: statterConfig.Password,
 	}
 
-	client := influx.NewHTTPClient(influxConfig)
+	client, err := influx.NewHTTPClient(influxConfig)
+	if err != nil {
+		logger.Errorf("Unable to create new influx client: %v", err)
+	}
 
 	metricsChannel := make(chan influx.Point)
 	batch := newBatchPointsForDB(statterConfig.Database, logger)
